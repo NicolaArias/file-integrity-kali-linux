@@ -1,0 +1,64 @@
+En este proyecto estuve trabajando con las siguientes indicaciones 
+
+1. Conceptos básicos
+Clave privada (privada.pem): tu secreto. Con ella firmás. Nunca se envía ni se comparte.
+Clave pública (publica.pem): se comparte para que otros verifiquen tu firma.
+Firma (.sig): archivo que resulta de firmar un documento concreto. Es una firma criptográfica,
+no visible.
+Huella (fingerprint): resumen corto de la clave pública, para confirmar que es la tuya.
+
+2. Obtener la clave pública desde la privada
+Como la clave privada ya está creada, la pública se extrae de ella:
+openssl pkey -in privada.pem -pubout -out publica.pem
+Si la privada tiene contraseña, OpenSSL la va a pedir.
+
+3. Obtener la huella de la clave pública
+openssl pkey -pubin -in publica.pem -outform DER | openssl dgst -sha256
+El resultado es una cadena hexadecimal. Guardala: se envía por otro canal (WhatsApp,
+llamada, en persona) para que el destinatario confirme que la clave es tuya.
+
+4. Firmar un documento
+openssl dgst -sha256 -sign privada.pem -out correo1.sig correo1.pdf
+Cada PDF necesita su propio archivo .sig (correo2.sig para correo2.pdf, etc.). No modifiques el
+PDF después de firmarlo: si cambia un solo byte, la verificación falla.
+Para firmar varios PDFs de una vez:
+for f in correo*.pdf; do
+ openssl dgst -sha256 -sign privada.pem -out "${f%.pdf}.sig" "$f"
+done
+
+5. Verificar la firma
+openssl dgst -sha256 -verify publica.pem -signature correo1.sig correo1.pdf
+Si todo está bien, muestra Verified OK. Si muestra Verification failure, el archivo fue alterado o
+la firma no corresponde.
+
+6. Verificar lo que te mandan (lado del verificador)
+Si te llega un archivo, su firma (.sig) y una clave pública (publica.pem), seguí estos pasos en
+orden.
+
+ Paso 1: guardá los tres archivos en la misma carpeta (archivo, .sig y publica.pem). 
+ Paso 2: confirmá que la clave pública es válida y ver su contenido:
+openssl pkey -pubin -in publica.pem -text -noout
+Si el archivo está dañado o no es una clave pública, da error. Si está bien, muestra el Modulus y
+el Exponent.
+ Paso 3: calculá la huella de la clave que recibiste:
+openssl pkey -pubin -in publica.pem -outform DER | openssl dgst -sha256
+Compará el resultado, carácter por carácter, con la huella que el remitente te pasó por otro
+canal (WhatsApp, llamada, en persona). Si coinciden, la clave es realmente de esa persona. Si
+difieren aunque sea en un carácter, no confíes: la clave pudo ser reemplazada en el camino.
+ Paso 4: verificá la firma del archivo:
+openssl dgst -sha256 -verify publica.pem -signature archivo.sig archivo.pdf
+
+Resultados posibles:
+• Verified OK: el archivo lo firmó la clave privada que corresponde a esa pública y no fue
+alterado.
+• Verification failure: el archivo fue modificado, la firma es de otro archivo, o la clave no
+corresponde.
+• Error de lectura: algún archivo está dañado o mal copiado (por ejemplo, le faltan líneas al
+.pem).
+Verificar varios archivos de una vez (cada PDF con su .sig del mismo nombre):
+for f in *.pdf; do
+ echo -n "$f: "
+ openssl dgst -sha256 -verify publica.pem -signature "${f%.pdf}.sig" "$f"
+done
+Importante: Verified OK solo prueba que la firma coincide con esa clave. Es el Paso 3 (la
+huella) el que ata la clave a una persona concreta. Sin ese paso, no sabés de quién es la clave.
